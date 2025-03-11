@@ -1,0 +1,80 @@
+services:
+  ollama:
+    image: ollama/ollama:0.5.11
+    container_name: ${CONTAINER_NAME}-ollama
+    volumes:
+      - ${HIT_DOCKER_HOME}/${CONTAINER_NAME}/${CONTAINER_NAME}-ollama:/root/.ollama
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
+    ports:
+      - "11434:11434"
+    restart: unless-stopped
+
+    labels:
+      - "ofelia.enabled=true"
+      - "traefik.enable=true"
+      - "traefik.http.routers.${CONTAINER_NAME}-ollama.entrypoints=http"
+      - "traefik.http.routers.${CONTAINER_NAME}-ollama.rule=Host(`${DOMAIN_NAME_OLLAMA}`)"
+      - "traefik.http.middlewares.${CONTAINER_NAME}-ollama-https-redirect.redirectscheme.scheme=https"
+      - "traefik.http.routers.${CONTAINER_NAME}-ollama.middlewares=${CONTAINER_NAME}-ollama-https-redirect"
+      - "traefik.http.routers.${CONTAINER_NAME}-ollama-secure.entrypoints=https"
+      - "traefik.http.middlewares.api-token.plugin.api-token-middleware.authenticationHeader=true"
+      - "traefik.http.middlewares.api-token.plugin.api-token-middleware.authenticationHeaderName=Bearer"
+      - "traefik.http.middlewares.api-token.plugin.api-token-middleware.authenticationErrorMsg=Invalid token"
+      - "traefik.http.middlewares.api-token.plugin.api-token-middleware.bearerHeader=true"
+      - "traefik.http.middlewares.api-token.plugin.api-token-middleware.bearerHeaderName=Authorization"
+      - "traefik.http.middlewares.api-token.plugin.api-token-middleware.removeHeadersOnSuccess=true"
+      - "traefik.http.middlewares.api-token.plugin.api-token-middleware.removeTokenNameOnFailure=false"
+      - "traefik.http.middlewares.api-token.plugin.api-token-middleware.timestampUnix=false"
+      - "traefik.http.middlewares.api-token.plugin.api-token-middleware.permissiveMode=false"
+      - "traefik.http.middlewares.api-token.plugin.api-token-middleware.debugLogs=false"
+      - "traefik.http.middlewares.api-token.plugin.api-token-middleware.tokens=XXXXXXXXXXYYYYYYYYYYYZZZZZZZZZ"
+      - "traefik.http.routers.${CONTAINER_NAME}-ollama-secure.rule=Host(`${DOMAIN_NAME_OLLAMA}`)"
+      - "traefik.http.routers.${CONTAINER_NAME}-ollama-secure.tls=true"
+      - "traefik.http.routers.${CONTAINER_NAME}-ollama-secure.tls.certresolver=http"
+      - "traefik.http.routers.${CONTAINER_NAME}-ollama-secure.service=${CONTAINER_NAME}-ollama"
+      - "traefik.http.routers.${CONTAINER_NAME}-ollama-secure.middlewares=api-token"
+      - "traefik.http.services.${CONTAINER_NAME}-ollama.loadbalancer.server.port=11434"
+      - "traefik.docker.network=proxy"
+
+    networks:
+      - proxy
+  open-webui:
+    image: ghcr.io/open-webui/open-webui:main
+    container_name: ${CONTAINER_NAME}-webui
+    volumes:
+      - ${HIT_DOCKER_HOME}/${CONTAINER_NAME}/${CONTAINER_NAME}-webui:/app/backend/data
+    ports:
+      - "8080:8080"
+    environment:
+      - OLLAMA_BASE_URL=http://ollama:11434
+    depends_on:
+      - ollama
+    restart: unless-stopped
+
+    labels:
+      - "ofelia.enabled=true"
+      - "traefik.enable=true"
+      - "traefik.http.routers.${CONTAINER_NAME}-ai.entrypoints=http"
+      - "traefik.http.routers.${CONTAINER_NAME}-ai.rule=Host(`${DOMAIN_NAME}`)"
+      - "traefik.http.middlewares.${CONTAINER_NAME}-ai-https-redirect.redirectscheme.scheme=https"
+      - "traefik.http.routers.${CONTAINER_NAME}-ai.middlewares=${CONTAINER_NAME}-ai-https-redirect"
+      - "traefik.http.routers.${CONTAINER_NAME}-ai-secure.entrypoints=https"
+      - "traefik.http.routers.${CONTAINER_NAME}-ai-secure.rule=Host(`${DOMAIN_NAME}`)"
+      - "traefik.http.routers.${CONTAINER_NAME}-ai-secure.tls=true"
+      - "traefik.http.routers.${CONTAINER_NAME}-ai-secure.tls.certresolver=http"
+      - "traefik.http.routers.${CONTAINER_NAME}-ai-secure.service=${CONTAINER_NAME}-ai"
+      - "traefik.http.services.${CONTAINER_NAME}-ai.loadbalancer.server.port=8080"
+      - "traefik.docker.network=proxy"
+
+    networks:
+      - proxy
+
+networks:
+  proxy:
+    external: true
